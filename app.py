@@ -35,7 +35,7 @@ class FTTransformer(torch.nn.Module):
 # -----------------------------
 
 model = FTTransformer(100)
-model.load_state_dict(torch.load("model.pth", map_location=torch.device("cpu")))
+model.load_state_dict(torch.load("model.pth", map_location="cpu"), strict=False)
 model.eval()
 
 # -----------------------------
@@ -174,4 +174,5 @@ if uploaded_file is not None:
     if result == "Parkinson Detected":
         st.error("Final Decision: Parkinson Detected")
     else:
+
         st.success("Final Decision: Healthy")
