@@ -50,11 +50,9 @@ class ParkinsonAgent:
     def predict(self, prob):
         return prob[:, 1].item()
 
-
 class HealthyAgent:
     def predict(self, prob):
         return prob[:, 0].item()
-
 
 class MemoryAgent:
     def __init__(self):
@@ -66,14 +64,12 @@ class MemoryAgent:
     def get_history(self):
         return self.history
 
-
 memory_agent = MemoryAgent()
 
 # -----------------------------
 # Streamlit UI
 # -----------------------------
 st.title("Parkinson Voice Detection System")
-
 st.write("Upload a WAV voice file to detect Parkinson’s disease risk.")
 
 uploaded_file = st.file_uploader("Upload WAV file", type=["wav"])
@@ -91,7 +87,7 @@ if uploaded_file is not None:
     # Normalize audio
     y = librosa.util.normalize(y)
 
-    # Trim silence
+    # Remove silence
     y, _ = librosa.effects.trim(y)
 
     # -----------------------------
@@ -124,14 +120,13 @@ if uploaded_file is not None:
     if audio_features.shape[1] < target_size:
         padding = np.zeros((1, target_size - audio_features.shape[1]))
         audio_features = np.concatenate((audio_features, padding), axis=1)
-    else:
-        audio_features = audio_features[:, :target_size]
+
+    audio_features = audio_features[:, :target_size]
 
     # -----------------------------
     # Apply preprocessing
     # -----------------------------
     audio_scaled = scaler.transform(audio_features)
-
     audio_pca = pca.transform(audio_scaled)
 
     sample = torch.tensor(audio_pca, dtype=torch.float32)
@@ -155,13 +150,17 @@ if uploaded_file is not None:
     pd_risk = pd_score * 100
     healthy_risk = healthy_score * 100
 
-    # Improved decision rule
-    if pd_score > healthy_score + 0.15:
+    # -----------------------------
+    # Improved Decision Logic
+    # -----------------------------
+    if pd_score >= 0.65:
         result = "Parkinson Detected"
-    elif healthy_score > pd_score + 0.15:
+
+    elif healthy_score >= 0.65:
         result = "Healthy"
+
     else:
-        result = "Uncertain"
+        result = "Uncertain (Low Confidence)"
 
     memory_agent.store(result)
 
@@ -174,7 +173,6 @@ if uploaded_file is not None:
     st.write("Healthy Probability:", round(healthy_risk, 2), "%")
 
     st.subheader("Prediction History")
-
     st.write(memory_agent.get_history())
 
     if result == "Parkinson Detected":
