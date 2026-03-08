@@ -29,7 +29,6 @@ class FTTransformer(torch.nn.Module):
         x = self.fc2(x)
         return x
 
-
 # -----------------------------
 # Load trained model
 # -----------------------------
@@ -59,7 +58,6 @@ class MemoryAgent:
 
     def get_history(self):
         return self.history
-
 
 memory_agent = MemoryAgent()
 
@@ -150,22 +148,27 @@ if uploaded_file is not None:
     pd_score = pd_agent.predict(prob)
     healthy_score = healthy_agent.predict(prob)
 
-    if pd_score > healthy_score:
+    pd_risk = pd_score * 100
+    healthy_risk = healthy_score * 100
+
+    # Stable decision thresholds
+    if pd_score >= 0.60:
         result = "Parkinson Detected"
-    else:
+    elif healthy_score >= 0.60:
         result = "Healthy"
+    else:
+        result = "Uncertain (Low Confidence)"
 
     memory_agent.store(result)
 
     # -----------------------------
-    # Display results
+    # Display Results
     # -----------------------------
 
-    st.subheader("Agent Scores")
+    st.subheader("Prediction Confidence")
 
-    st.write("Parkinson Agent Score:", pd_score)
-
-    st.write("Healthy Agent Score:", healthy_score)
+    st.write("Parkinson Risk:", round(pd_risk,2), "%")
+    st.write("Healthy Probability:", round(healthy_risk,2), "%")
 
     st.subheader("Prediction History")
 
@@ -173,6 +176,9 @@ if uploaded_file is not None:
 
     if result == "Parkinson Detected":
         st.error("Final Decision: Parkinson Detected")
-    else:
 
+    elif result == "Healthy":
         st.success("Final Decision: Healthy")
+
+    else:
+        st.warning("Final Decision: Uncertain - Voice sample not clear")
