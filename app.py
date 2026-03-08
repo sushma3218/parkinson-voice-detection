@@ -108,49 +108,48 @@ if uploaded_file is not None:
         if audio_features.shape[1] != 16:
             st.error("Feature extraction failed to produce exactly 16 features.")
         else:
-            try:
-                # preprocessing
-                audio_scaled = scaler.transform(audio_features)
-        
-                sample = torch.tensor(audio_scaled, dtype=torch.float32)
-        
-                # prediction
-                with torch.no_grad():
-                    output = model(sample)
-                    prob = torch.softmax(output, dim=1)
-        
-                pd_agent = ParkinsonAgent()
-                healthy_agent = HealthyAgent()
-        
-                pd_score = pd_agent.predict(prob)
-                healthy_score = healthy_agent.predict(prob)
-        
-                pd_risk = pd_score * 100
-                healthy_risk = healthy_score * 100
-        
-                # decision
-                if pd_score > healthy_score:
-                    result = "Parkinson Detected"
-                else:
-                    result = "Healthy"
-        
-                memory_agent.store(result)
+            # preprocessing
+            audio_scaled = scaler.transform(audio_features)
+    
+            sample = torch.tensor(audio_scaled, dtype=torch.float32)
+    
+            # prediction
+            with torch.no_grad():
+                output = model(sample)
+                prob = torch.softmax(output, dim=1)
+    
+            pd_agent = ParkinsonAgent()
+            healthy_agent = HealthyAgent()
+    
+            pd_score = pd_agent.predict(prob)
+            healthy_score = healthy_agent.predict(prob)
+    
+            pd_risk = pd_score * 100
+            healthy_risk = healthy_score * 100
+    
+            # decision
+            if pd_score > healthy_score:
+                result = "Parkinson Detected"
+            else:
+                result = "Healthy"
+    
+            memory_agent.store(result)
 
-        # display
-        st.subheader("Prediction Confidence")
+            # display
+            st.subheader("Prediction Confidence")
+    
+            st.write("Parkinson Probability:", round(pd_risk,2), "%")
+            st.write("Healthy Probability:", round(healthy_risk,2), "%")
+    
+            st.subheader("Prediction History")
+    
+            st.write(memory_agent.get_history())
+    
+            if result == "Parkinson Detected":
+                st.error("Final Decision: Parkinson Detected")
+            else:
+                st.success("Final Decision: Healthy")
 
-        st.write("Parkinson Probability:", round(pd_risk,2), "%")
-        st.write("Healthy Probability:", round(healthy_risk,2), "%")
-
-        st.subheader("Prediction History")
-
-        st.write(memory_agent.get_history())
-
-        if result == "Parkinson Detected":
-            st.error("Final Decision: Parkinson Detected")
-        else:
-            st.success("Final Decision: Healthy")
-
-    except:
-        st.error("Could not extract voice features from this audio.")
+    except Exception as e:
+        st.error(f"Could not extract voice features from this audio: {e}")
 
