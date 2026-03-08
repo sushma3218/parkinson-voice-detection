@@ -3,6 +3,7 @@ import numpy as np
 import torch
 import pickle
 import random
+import tempfile
 import parselmouth
 from parselmouth.praat import call
 
@@ -70,24 +71,38 @@ memory_agent = MemoryAgent()
 # -----------------------------
 # Feature Extraction (Praat)
 # -----------------------------
-def extract_features(audio_file):
+import tempfile
+import parselmouth
+from parselmouth.praat import call
 
-    sound = parselmouth.Sound(audio_file)
+def extract_features(uploaded_file):
 
-    pitch = call(sound, "To Pitch", 0.0, 75, 500)
+    # save uploaded file temporarily
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+        tmp.write(uploaded_file.read())
+        temp_path = tmp.name
 
-    pointProcess = call(sound, "To PointProcess (periodic, cc)", 75, 500)
+    sound = parselmouth.Sound(temp_path)
 
-    jitter = call(pointProcess, "Get jitter (local)", 0,0,0.0001,0.02,1.3)
+    # create pitch and point process
+    point_process = call(sound, "To PointProcess (periodic, cc)", 75, 500)
 
-    shimmer = call([sound, pointProcess],
-                   "Get shimmer (local)",0,0,0.0001,0.02,1.3,1.6)
+    # jitter
+    jitter = call(point_process, "Get jitter (local)", 0, 0, 0.0001, 0.02, 1.3)
 
-    harmonicity = call(sound, "To Harmonicity (cc)",0.01,75,0.1,1.0)
+    # shimmer
+    shimmer = call([sound, point_process],
+                   "Get shimmer (local)", 0, 0, 0.0001, 0.02, 1.3, 1.6)
 
-    hnr = call(harmonicity, "Get mean",0,0)
+    # harmonicity
+    harmonicity = call(sound, "To Harmonicity (cc)", 0.01, 75, 0.1, 1.0)
+    hnr = call(harmonicity, "Get mean", 0, 0)
 
-    return np.array([jitter, shimmer, hnr])
+    # handle NaN values
+    features = np.array([jitter, shimmer, hnr])
+    features = np.nan_to_num(features)
+
+    return features
 
 
 # -----------------------------
@@ -158,3 +173,4 @@ if uploaded_file is not None:
 
     except:
         st.error("Could not extract voice features from this audio.")
+
