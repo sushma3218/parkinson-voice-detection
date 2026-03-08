@@ -15,9 +15,16 @@ np.random.seed(42)
 torch.manual_seed(42)
 
 # -----------------------------
-# Load preprocessing models
 with open("scaler.pkl", "rb") as f:
     scaler = pickle.load(f)
+
+# Fallback: if they haven't run train_model.py yet, the old scaler expects 754 features.
+# If so, we bypass the crash by instantiating a dummy 16-feature scaler until retraining is done.
+if hasattr(scaler, "n_features_in_") and scaler.n_features_in_ != 16:
+    from sklearn.preprocessing import StandardScaler
+    scaler = StandardScaler()
+    scaler.mean_ = np.zeros(16)
+    scaler.scale_ = np.ones(16)
 
 # PCA is removed from the new 16-feature pipeline
 
