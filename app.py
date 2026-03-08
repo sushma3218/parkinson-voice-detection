@@ -1,12 +1,13 @@
 import streamlit as st
-import librosa
 import numpy as np
 import torch
 import pickle
 import random
+import parselmouth
+from parselmouth.praat import call
 
 # -----------------------------
-# Fix randomness for stable predictions
+# Fix randomness
 # -----------------------------
 random.seed(42)
 np.random.seed(42)
@@ -22,7 +23,7 @@ with open("pca.pkl", "rb") as f:
     pca = pickle.load(f)
 
 # -----------------------------
-# Define FT Transformer model
+# Define model
 # -----------------------------
 class FTTransformer(torch.nn.Module):
     def __init__(self, input_dim):
@@ -48,11 +49,11 @@ model.eval()
 # -----------------------------
 class ParkinsonAgent:
     def predict(self, prob):
-        return prob[:, 1].item()
+        return prob[:,1].item()
 
 class HealthyAgent:
     def predict(self, prob):
-        return prob[:, 0].item()
+        return prob[:,0].item()
 
 class MemoryAgent:
     def __init__(self):
@@ -67,9 +68,33 @@ class MemoryAgent:
 memory_agent = MemoryAgent()
 
 # -----------------------------
+# Feature Extraction (Praat)
+# -----------------------------
+def extract_features(audio_file):
+
+    sound = parselmouth.Sound(audio_file)
+
+    pitch = call(sound, "To Pitch", 0.0, 75, 500)
+
+    pointProcess = call(sound, "To PointProcess (periodic, cc)", 75, 500)
+
+    jitter = call(pointProcess, "Get jitter (local)", 0,0,0.0001,0.02,1.3)
+
+    shimmer = call([sound, pointProcess],
+                   "Get shimmer (local)",0,0,0.0001,0.02,1.3,1.6)
+
+    harmonicity = call(sound, "To Harmonicity (cc)",0.01,75,0.1,1.0)
+
+    hnr = call(harmonicity, "Get mean",0,0)
+
+    return np.array([jitter, shimmer, hnr])
+
+
+# -----------------------------
 # Streamlit UI
 # -----------------------------
 st.title("Parkinson Voice Detection System")
+
 st.write("Upload a WAV voice file to detect Parkinson’s disease risk.")
 
 uploaded_file = st.file_uploader("Upload WAV file", type=["wav"])
@@ -81,105 +106,55 @@ if uploaded_file is not None:
 
     st.audio(uploaded_file)
 
-    # Load audio
-    y, sr = librosa.load(uploaded_file, sr=16000, mono=True)
+    try:
 
-    # Normalize audio
-    y = librosa.util.normalize(y)
+        features = extract_features(uploaded_file)
 
-    # Remove silence
-    y, _ = librosa.effects.trim(y)
+        audio_features = features.reshape(1,-1)
 
-    # -----------------------------
-    # Feature Extraction
-    # -----------------------------
-    features = []
+        # preprocessing
+        audio_scaled = scaler.transform(audio_features)
 
-    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=20)
-    features.extend(np.mean(mfcc, axis=1))
+        audio_pca = pca.transform(audio_scaled)
 
-    centroid = librosa.feature.spectral_centroid(y=y, sr=sr)
-    features.append(np.mean(centroid))
+        sample = torch.tensor(audio_pca, dtype=torch.float32)
 
-    bandwidth = librosa.feature.spectral_bandwidth(y=y, sr=sr)
-    features.append(np.mean(bandwidth))
+        # prediction
+        with torch.no_grad():
+            output = model(sample)
+            prob = torch.softmax(output, dim=1)
 
-    zcr = librosa.feature.zero_crossing_rate(y)
-    features.append(np.mean(zcr))
+        pd_agent = ParkinsonAgent()
+        healthy_agent = HealthyAgent()
 
-    chroma = librosa.feature.chroma_stft(y=y, sr=sr)
-    features.extend(np.mean(chroma, axis=1))
+        pd_score = pd_agent.predict(prob)
+        healthy_score = healthy_agent.predict(prob)
 
-    audio_features = np.array(features).reshape(1, -1)
+        pd_risk = pd_score * 100
+        healthy_risk = healthy_score * 100
 
-    # -----------------------------
-    # Match dataset feature size
-    # -----------------------------
-    target_size = 754
+        # decision
+        if pd_score > healthy_score:
+            result = "Parkinson Detected"
+        else:
+            result = "Healthy"
 
-    if audio_features.shape[1] < target_size:
-        padding = np.zeros((1, target_size - audio_features.shape[1]))
-        audio_features = np.concatenate((audio_features, padding), axis=1)
+        memory_agent.store(result)
 
-    audio_features = audio_features[:, :target_size]
+        # display
+        st.subheader("Prediction Confidence")
 
-    # -----------------------------
-    # Apply preprocessing
-    # -----------------------------
-    audio_scaled = scaler.transform(audio_features)
-    audio_pca = pca.transform(audio_scaled)
+        st.write("Parkinson Probability:", round(pd_risk,2), "%")
+        st.write("Healthy Probability:", round(healthy_risk,2), "%")
 
-    sample = torch.tensor(audio_pca, dtype=torch.float32)
+        st.subheader("Prediction History")
 
-    # -----------------------------
-    # Model Prediction
-    # -----------------------------
-    with torch.no_grad():
-        output = model(sample)
-        prob = torch.softmax(output, dim=1)
+        st.write(memory_agent.get_history())
 
-    # -----------------------------
-    # Multi-Agent Decision
-    # -----------------------------
-    pd_agent = ParkinsonAgent()
-    healthy_agent = HealthyAgent()
+        if result == "Parkinson Detected":
+            st.error("Final Decision: Parkinson Detected")
+        else:
+            st.success("Final Decision: Healthy")
 
-    pd_score = pd_agent.predict(prob)
-    healthy_score = healthy_agent.predict(prob)
-
-    pd_risk = pd_score * 100
-    healthy_risk = healthy_score * 100
-
-    # -----------------------------
-    # Improved Decision Logic
-    # -----------------------------
-    if pd_score >= 0.65:
-        result = "Parkinson Detected"
-
-    elif healthy_score >= 0.65:
-        result = "Healthy"
-
-    else:
-        result = "Uncertain (Low Confidence)"
-
-    memory_agent.store(result)
-
-    # -----------------------------
-    # Display Results
-    # -----------------------------
-    st.subheader("Prediction Confidence")
-
-    st.write("Parkinson Probability:", round(pd_risk, 2), "%")
-    st.write("Healthy Probability:", round(healthy_risk, 2), "%")
-
-    st.subheader("Prediction History")
-    st.write(memory_agent.get_history())
-
-    if result == "Parkinson Detected":
-        st.error("Final Decision: Parkinson Detected")
-
-    elif result == "Healthy":
-        st.success("Final Decision: Healthy")
-
-    else:
-        st.warning("Final Decision: Uncertain - Voice sample not clear")
+    except:
+        st.error("Could not extract voice features from this audio.")
