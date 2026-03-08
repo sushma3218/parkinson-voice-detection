@@ -184,18 +184,19 @@ if uploaded_file is not None:
 
     st.subheader("Prediction Confidence")
 
-    st.write("Parkinson Risk:", round(pd_risk,2), "%")
-    st.write("Healthy Probability:", round(healthy_risk,2), "%")
+st.write("Parkinson Probability:", round(pd_score,3))
+st.write("Healthy Probability:", round(healthy_score,3))
 
     st.subheader("Prediction History")
 
     st.write(memory_agent.get_history())
 
-    if result == "Parkinson Detected":
-        st.error("Final Decision: Parkinson Detected")
+    if pd_score > healthy_score + 0.15:
+    result = "Parkinson Detected"
 
-    elif result == "Healthy":
-        st.success("Final Decision: Healthy")
+elif healthy_score > pd_score + 0.15:
+    result = "Healthy"
 
-    else:
-        st.warning("Final Decision: Uncertain - Voice sample not clear")
+else:
+    result = "Uncertain (Voice not clear)"
+
